@@ -9,7 +9,7 @@ import quantstats as qs
 import gurobipy as gp
 import warnings
 import argparse
-
+from scipy.optimize import minimize
 """
 Project Setup
 """
@@ -38,11 +38,10 @@ for asset in assets:
     data = pd.concat([data, raw], axis=0)
 
 # Initialize df and df_returns
-Bdf = portfolio_data = data.pivot_table(
-    index="Date", columns="Symbol", values="Adj Close"
-)
+Bdf = portfolio_data = data.pivot_table(index="Date",
+                                        columns="Symbol",
+                                        values="Adj Close")
 df = Bdf.loc["2019-01-01":"2024-04-01"]
-
 """
 Strategy Creation
 
@@ -67,14 +66,29 @@ class MyPortfolio:
         assets = self.price.columns[self.price.columns != self.exclude]
 
         # Calculate the portfolio weights
-        self.portfolio_weights = pd.DataFrame(
-            index=self.price.index, columns=self.price.columns
-        )
-
+        self.portfolio_weights = pd.DataFrame(index=self.price.index,
+                                              columns=self.price.columns)
         """
         TODO: Complete Task 4 Below
         """
 
+        def sharpe_ratio(weights):
+            X = self.returns[assets].values
+            cov_matrix = np.cov(X.T)
+            exp_returns = np.mean(X, axis=0)
+            portfolio_return = np.dot(weights, exp_returns)
+            portfolio_volatility = np.sqrt(
+                np.dot(weights, np.dot(cov_matrix, weights)))
+            sharpe = portfolio_return / portfolio_volatility
+            return -sharpe
+
+        initial_weights = np.array([1 / len(assets)] * len(assets))
+        constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+
+        optimized = minimize(sharpe_ratio,
+                             initial_weights,
+                             constraints=constraints)
+        self.portfolio_weights[assets] = pd.Series(optimized.x, index=assets)
         """
         TODO: Complete Task 4 Above
         """
@@ -91,10 +105,8 @@ class MyPortfolio:
         self.portfolio_returns = self.returns.copy()
         assets = self.price.columns[self.price.columns != self.exclude]
         self.portfolio_returns["Portfolio"] = (
-            self.portfolio_returns[assets]
-            .mul(self.portfolio_weights[assets])
-            .sum(axis=1)
-        )
+            self.portfolio_returns[assets].mul(
+                self.portfolio_weights[assets]).sum(axis=1))
 
     def get_results(self):
         # Ensure portfolio returns are calculated
@@ -112,6 +124,7 @@ The following functions will help check your solution.
 
 
 class AssignmentJudge:
+
     def __init__(self):
         self.mp = MyPortfolio(df, "SPY").get_results()
         self.Bmp = MyPortfolio(Bdf, "SPY").get_results()
@@ -121,7 +134,8 @@ class AssignmentJudge:
         _, ax = plt.subplots()
         returns = price.pct_change().fillna(0)
         (1 + returns["SPY"]).cumprod().plot(ax=ax, label="SPY")
-        (1 + strategy[1]["Portfolio"]).cumprod().plot(ax=ax, label=f"MyPortfolio")
+        (1 + strategy[1]["Portfolio"]).cumprod().plot(ax=ax,
+                                                      label=f"MyPortfolio")
 
         ax.set_title("Cumulative Returns")
         ax.set_xlabel("Date")
@@ -173,10 +187,8 @@ class AssignmentJudge:
     def check_sharp_ratio_greater_than_spy(self):
         if not self.check_portfolio_position(self.mp[0]):
             return 0
-        if (
-            self.report_metrics(Bdf, self.Bmp)[1]
-            > self.report_metrics(Bdf, self.Bmp)[0]
-        ):
+        if (self.report_metrics(Bdf, self.Bmp)[1]
+                > self.report_metrics(Bdf, self.Bmp)[0]):
             print("Problem 4.2 Success - Get 10 points")
             return 10
         else:
@@ -198,8 +210,7 @@ class AssignmentJudge:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Introduction to Fintech Assignment 3 Part 12"
-    )
+        description="Introduction to Fintech Assignment 3 Part 12")
 
     parser.add_argument(
         "--score",
@@ -219,13 +230,13 @@ if __name__ == "__main__":
         help="Performance for portfolio",
     )
 
-    parser.add_argument(
-        "--report", action="append", help="Report for evaluation metric"
-    )
+    parser.add_argument("--report",
+                        action="append",
+                        help="Report for evaluation metric")
 
-    parser.add_argument(
-        "--cumulative", action="append", help="Cumulative product result"
-    )
+    parser.add_argument("--cumulative",
+                        action="append",
+                        help="Cumulative product result")
 
     args = parser.parse_args()
 
